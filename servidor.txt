@@ -1,0 +1,6 @@
+cristianmolina.epizy.com
+
+FTP Username	epiz_26635647
+FTP Password DzNmvGG298A3ZJ
+FTP Hostname	ftpupload.net
+FTP Port (optional)	21

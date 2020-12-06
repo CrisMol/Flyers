@@ -1,0 +1,130 @@
+comando proyecto twitter:
+* Intalación: composer create-project --prefer-dist laravel/laravel Twitter "7.*"
+* version: php artisan --version
+* autenticación: composer require laravel/ui:^2.4
+		php artisan ui bootstrap --auth
+		npm install && npm run dev
+* Crear entidad y una tabla de base de datos: php artisan make:model Entry -mc
+(Migración: control de version de nuestras bases de datos)
+* Crear foreign key:
+	$table->unsignedBigInteger('user_id');
+        $table->foreign('user_id')->references('id')->on('users');
+* Crear la base de datos: php artisan migrate
+* Actualizar base de datos: php artisan migrate:fresh
+* Crear y guardar en la base de datos con: creando un nuevo objeto y save.
+* Autenticar cada controlador con middleware: 
+	public function __construct()
+	{
+		$this->middleware('auth');
+	}
+(Guest hace referencia a invitados).
+* Para obtener todos los datos solo: Entry::all();
+* Crear usuarios de prueba: php artisan make:seeder UsersTableSeeder
+* Los siders no se ejecutan solos, solo adentro de seeds/DatabaseSeeder lo hacemos: this->call(UsersTableSeeder::class);
+* Actualizamos la base nuevamente_:php artisan migrate:fresh --seed
+* Creamos un factory dentro de entradas: php artisan make:factory UserFactory
+(Faker datos ficticios)
+(UserFactory es una clase que nos permite definir nuevos usuarios, lo usamos en el seeder: factory(User::class, 10)->create();)
+* Despues de crear el factory refrecamos: php artisan migrate:fresh --seed
+* Hacer páginación: En el controlador $entries = Entry::paginate(10);
+* Luego en la vista: {{ $entries->links() }}
+* Para crear 10 entradas para cada usuario:
+	$users = User::all();
+    	$users->each(function($user){
+    		factory(Entry::class, 10)->create([
+    			'user_id' => $user->id
+    		]);
+    	});
+* Refrescamos la base: php artisan migrate:fresh --seed
+* Podemos precargar la información del usuario en el controlador mediante: $entries = Entry::with('User')->paginate(10); (User es el metodo dentro del modelo Entry.
+* Para editar una entrada usamos PUT en el form: @method('PUT')
+valor inicial para la edicion en el formulario:  value="{{ old('title', $entry->title) }}
+para evitar en un edit que cuando no se edite el titulo, pero si el contenido ponemos: 
+	'title' => 'required|min:7|max:255|unique:entries,id,'.$entry->id,
+	aqui dice, validame cuando sea unico y ademas exectuando el id
+* Url Limpias: Texto en las uurl (slug): Estrategia del slug: 
+	id->7
+	title->Programaciòn y màs
+	slug->programacion-y-mas-7
+
+	title actualizado Visita PYM
+	slug->visita-pym-7
+* Mutator: Definir el mutator dentro del modelo Entry:
+	public function setTitleAttribute($value)
+    {
+    	$this->attributes['slug'] = Str::slug($value);
+    }
+(tinker: herramienta de laravel que nos permite ejecutar código php de una manera interactiva)
+* Para hacer el slug debemos cambiar la busqueda en el modelo por la columna slug no por id:
+	public function getRouteKeyName()
+  	{
+          return 'slug';
+	}
+* Para buscar por el slug y por el id al mismo tiempo, usamos un boot, dentro de la carpeta App\Providers\RouteServiceProvider
+public function boot()
+    {
+        parent::boot();
+
+        Route::bind('entry', function ($value) {//El modelo entry debe estar en la ruta y en el controlador /entries/{entry}
+            $parts = explode('-',$value); //Devuelve las partes 
+	    $id = end($parts);//devuelve el id
+            return Entry::findOrFail($id);//Encuentra el id o genera un error 404(fail)
+        });
+    }
+* Actualizar rutas: <a href="{{ url('entries/'.$entry->slug.'-'.$entry->id) }}">{{$entry->title}}</a>
+* El incoveniente de lo anterior es que si cambiamos la url igual se sigue mostrando, por lo que vamos a redirigir:
+	public function boot() //ModelBinding para rutas amigables
+    {
+        parent::boot();
+
+        Route::bind('entry', function ($value) {
+            $parts = explode('-',$value);
+            $id = end($parts);
+            $entry = Entry::findOrFail($id);//Encuentra el id o genera un error 404(fail)
+
+            if($entry->slug.'-'.$entry->id === $value){
+                return $entry;
+            }else{
+                throw new InvalidEntrySlugException();
+            }
+        });
+    }
+
+* Cuando se genera un exception este tiene que crearse una clase igual dentro de App\Exeptions.
+* Como queremos que una sola ruta sea buscada por el slug, la otra siga por id, borramos la busqueda por slug en el modelo.
+* Laravel nos permite crear Gates y Policies para la Autorización, nos permite determinar si cierto usuario tiene
+acceso a cierta página de nuestra aplicación o a entrar o modificar a una entidad determinada: 
+	Gates proporciona un enfoque de autorización simple basado en el cierre, mas simples, y son de manera general. 
+	Policies, como los controladores, agrupan su lógica en torno a un modelo o recurso en particular.
+			Proteger:
+				if (auth()->id() !== $entry->user_id) {
+            				return redirect('/');
+        			}//Problema que tenemos que hacer esto para cada método
+			Crear policie: php artisan make:policy PostPolicy
+			Debemos asociarla con un modelo, para eso dentro: App\Providers\AuthServiceProvider la variable protegida: $policies.
+				Entry::class => EntryPolicy::class;
+			Definimos dentro de nuestra policie los métodos que debemos usar.
+				public function update(User $user, Entry $entry)
+    				{
+        				return $user->id === $entry->user_id;
+   				}
+			Luego podemos usar @can para usar las policies:
+				@can('update', $entry) //Vista
+				$this->authorize('update', $entry); //Controlador
+			También se puede proteger a nivel de controlador y rutas, en ruta por ejemplo:
+				Route::get('/entries/{entry}/edit', 'EntryController@edit')->middleware('can:update,entry');
+				y ya no sería necesario en el controlador
+* Cuando creamos un nuevo campo en el formulario del registro, debemos cambiar en el controlador y en el método Crear, 
+pero este método utiliza un array asociativo, esos campos son validados, laravel acepta a solo aquellos que estan en:
+			protected $fillable = [
+        			'name', 'email', 'password',
+    			];
+
+TEMAS EN WORDPRESS
+* Agregar: wp_enqueue_style( 'style', get_stylesheet_uri()); //para la hoja de estilos
+* En el index agregar: <?php wp_head();?>
+* Agregar una hoja aparte: wp_enqueue_style( 'bootstrap', get_template_directory_uri() . '/css/bootstrap.min.css');
+* wp_enqueue_script( 'bootstrap', 'https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ho+j7jyWK8fNQe+A12Hb8AhRq26LrZ/JpcUGGOn+Y7RsweNrtN/tE3MoK7ZeZDyx', array ( 'jquery' ), 1.1, true);
+la linea jquery, dice que primero va jquery, luego bootstrap.
+* con el get_header(); llamamos al header.php
+
